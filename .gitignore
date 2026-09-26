@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.local
+
+# Dataset (CC BY-NC-ND license — do not commit raw data)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Docker volumes
+pgdata/
+qdrant_storage/
+
+# OS / editor
+.DS_Store
+.vscode/
+*.swp
+
+# Logs
+*.log
