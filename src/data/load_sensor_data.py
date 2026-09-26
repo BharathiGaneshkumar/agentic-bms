@@ -1,7 +1,8 @@
-import os
 import pandas as pd
-from sqlalchemy import create_engine
+from sklearn.model_selection import train_test_split
 from dotenv import load_dotenv
+import os
+from sqlalchemy import create_engine
 
 load_dotenv()
 
@@ -28,6 +29,8 @@ COLUMN_MAP = {
     "cooling pump 4": "cooling_pump_4",
     "labeling": "labeling",
 }
+
+
 def load_and_clean(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
     df = df.rename(columns=COLUMN_MAP)
@@ -44,11 +47,55 @@ def load_and_clean(csv_path: str) -> pd.DataFrame:
     else:
         print("No exact duplicate rows found (paper's stated 332-row dedup does not "
               "reproduce on this Figshare release; verified via per-AHU gap analysis "
-              "instead — see README)")
+              "instead - see data/raw/README.md)")
 
     return df
 
+
+def assign_split(df: pd.DataFrame) -> pd.DataFrame:
+    # Valve position fault has too few rows (117) to stratify reliably.
+    # Leave its split as NULL, consistent with the EDA writeup.
+    splittable = df[df["labeling"] != "Valve position fault"].copy()
+    excluded = df[df["labeling"] == "Valve position fault"].copy()
+    excluded["split"] = None
+
+    # First split off the test set (20%), then split the remainder into
+    # train (60% of total) and val (20% of total) - stratified on the
+    # label each time so class proportions are preserved in every subset.
+    train_val, test = train_test_split(
+        splittable, test_size=0.20, stratify=splittable["labeling"], random_state=42
+    )
+    train, val = train_test_split(
+        train_val, test_size=0.25, stratify=train_val["labeling"], random_state=42
+    )
+    # 0.25 of the remaining 80% equals 20% of the original total.
+
+    train["split"] = "train"
+    val["split"] = "val"
+    test["split"] = "test"
+
+    result = pd.concat([train, val, test, excluded]).sort_index()
+    print(result["split"].value_counts(dropna=False))
+    return result
+
+
+def get_engine():
+    user = os.environ["POSTGRES_USER"]
+    password = os.environ["POSTGRES_PASSWORD"]
+    host = os.environ["POSTGRES_HOST"]
+    port = os.environ["POSTGRES_PORT"]
+    db = os.environ["POSTGRES_DB"]
+    url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
+    return create_engine(url)
+
+
+def write_to_postgres(df: pd.DataFrame):
+    engine = get_engine()
+    df.to_sql("sensor_readings", engine, if_exists="append", index=False, chunksize=5000)
+    print(f"Wrote {len(df)} rows to sensor_readings")
+
+
 if __name__ == "__main__":
     df = load_and_clean("data/raw/office_scientific_data.csv")
-    print(df.head())
-    print(df.dtypes)
+    df = assign_split(df)
+    write_to_postgres(df)
