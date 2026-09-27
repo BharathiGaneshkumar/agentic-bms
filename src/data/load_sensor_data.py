@@ -53,28 +53,20 @@ def load_and_clean(csv_path: str) -> pd.DataFrame:
 
 
 def assign_split(df: pd.DataFrame) -> pd.DataFrame:
-    # Valve position fault has too few rows (117) to stratify reliably.
-    # Leave its split as NULL, consistent with the EDA writeup.
-    splittable = df[df["labeling"] != "Valve position fault"].copy()
-    excluded = df[df["labeling"] == "Valve position fault"].copy()
-    excluded["split"] = None
-
-    # First split off the test set (20%), then split the remainder into
-    # train (60% of total) and val (20% of total) - stratified on the
-    # label each time so class proportions are preserved in every subset.
+    # All 5 classes now participate in the split, including Valve position
+    # fault (117 rows) - thin, but included via SMOTE later in training.
     train_val, test = train_test_split(
-        splittable, test_size=0.20, stratify=splittable["labeling"], random_state=42
+        df, test_size=0.20, stratify=df["labeling"], random_state=42
     )
     train, val = train_test_split(
         train_val, test_size=0.25, stratify=train_val["labeling"], random_state=42
     )
-    # 0.25 of the remaining 80% equals 20% of the original total.
 
     train["split"] = "train"
     val["split"] = "val"
     test["split"] = "test"
 
-    result = pd.concat([train, val, test, excluded]).sort_index()
+    result = pd.concat([train, val, test]).sort_index()
     print(result["split"].value_counts(dropna=False))
     return result
 
